@@ -1,0 +1,56 @@
+import xml.etree.ElementTree as ET
+import pandas as pd
+from statsmodels.tsa.arima.model import ARIMA
+import matplotlib.pyplot as plt
+
+# Load and parse the XML file
+tree = ET.parse('apple_health_export 2/export.xml')  # Replace 'your_file.xml' with your file path
+root = tree.getroot()
+
+# Extract heart rate data
+data = []
+for record in root.findall('.//Record'):
+    if record.get('type') == 'HKQuantityTypeIdentifierHeartRate':
+        timestamp = record.get('startDate')
+        heart_rate = record.get('value')
+        data.append({'timestamp': timestamp, 'heart_rate': float(heart_rate)})
+
+# Convert to DataFrame
+df = pd.DataFrame(data)
+df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+# Aggregate data by timestamp (mean)
+df = df.groupby('timestamp')['heart_rate'].mean().reset_index()
+
+# Set timestamp as the index
+df.set_index('timestamp', inplace=True)
+
+# Resample the data to daily average
+daily_avg = df['heart_rate'].resample('D').mean()
+
+# Plot the data
+daily_avg.plot(title='Daily Average Heart Rate')
+plt.ylabel('Average Heart Rate')
+plt.show()
+
+# Ensure the series has a defined frequency
+daily_avg = daily_avg.asfreq('D')
+
+# Fit ARIMA model for forecasting
+model = ARIMA(daily_avg.dropna(), order=(5,1,0))  # Example parameters
+model_fit = model.fit()
+
+# Forecast future values
+forecast = model_fit.forecast(steps=5)  # Change steps as needed
+
+# Creating a forecast index (next 5 days)
+last_date = daily_avg.index[-1]
+forecast_index = pd.date_range(start=last_date, periods=5, freq='D')
+
+# Plotting the forecast
+daily_avg.plot(legend=True, label='Observed')
+plt.plot(forecast_index, forecast, label='Forecast', color='red')
+plt.title('Heart Rate Forecast')
+plt.ylabel('Average Heart Rate')
+plt.legend()
+plt.show()
